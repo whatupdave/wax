@@ -180,16 +180,15 @@ static int createFile(lua_State *L) {
     if (lua_isstring(L, 2)) {
         size_t contentLength;
         const char *content = luaL_checklstring(L, 2, &contentLength);  
-        data = [NSData dataWithBytesNoCopy:(char *)content length:contentLength];        
+        data = [NSData dataWithBytesNoCopy:(char *)content length:contentLength freeWhenDone:NO];
     }
     else { // Assume it is an NSData object
         wax_instance_userdata *instanceUserdata = (wax_instance_userdata *)luaL_checkudata(L, 2, WAX_INSTANCE_METATABLE_NAME);
         data = instanceUserdata->instance;
     }
         
-    NSFileManager *fm = [NSFileManager defaultManager];    
     NSError *error = nil;
-    BOOL success = [fm createFileAtPath:path contents:data attributes:nil];
+    BOOL success = [data writeToFile:path atomically:NO];
     
     if (!success) {
         wax_log(LOG_DEBUG, @"Could not create file at '%@'\n%@", path, [error localizedDescription]);
@@ -206,7 +205,7 @@ static int createFile(lua_State *L) {
 static int createDir(lua_State *L) {
     NSString *path = [NSString stringWithUTF8String:luaL_checkstring(L, 1)];
     BOOL createParentDirs = NO;
-    if (lua_gettop(L) > 1) lua_toboolean(L, 2);
+    if (lua_gettop(L) > 1) createParentDirs = lua_toboolean(L, 2);
     
     NSError *error = nil;
     NSFileManager *fm = [NSFileManager defaultManager];    
@@ -226,16 +225,22 @@ static int createDir(lua_State *L) {
 //     path: string # deletes the path or directory (EVEN IF DIRECTORY HAS CONTENTS)
 static int delete(lua_State *L) {
     NSString *path = [NSString stringWithUTF8String:luaL_checkstring(L, 1)];
-    
+	
+	BOOL success = YES;
     NSFileManager *fm = [NSFileManager defaultManager];    
-    NSError *error = nil;
-    BOOL success = [fm removeItemAtPath:path error:&error];
+	if ([fm fileExistsAtPath:path]) {	
+		NSError *error = nil;
+		success = [fm removeItemAtPath:path error:&error];
 
-    if (!success) {
-        wax_log(LOG_DEBUG, @"Could not delete file at '%@'\n%@", path, [error localizedDescription]);
-    }
-    
-    lua_pushboolean(L, success);
+		if (!success) {
+			wax_log(LOG_DEBUG, @"Could not delete file at '%@'\n%@", path, [error localizedDescription]);
+		}
+	}
+	else {
+		wax_log(LOG_DEBUG, @"Trying to delete path that does not exist '%@'", path);
+	}
+	
+	lua_pushboolean(L, success);
     
     return 1;
 }
